@@ -58,6 +58,11 @@ you've used Color Swatch before, your saved colors come back on their own.
 - **Share:** *Copy Library* copies a readable list grouped under LIKED /
   DISLIKED / NEUTRAL, so it's legible when pasted into chat. Another creator
   hits *Paste & Merge* to fold your colors into theirs (duplicates skipped).
+- **Examine a screenshot:** *Examine Screenshot…* picks an image and pulls out
+  its main colors as a relative swatch — each chip shows its share of the frame.
+  *Add all → Neutral* drops them into your library to sort, or *Copy Hexes* grabs
+  them as text. Only one image is examined at a time and it's **never stored** —
+  it's read, turned into colors, and discarded.
 - **Generate 60/30/10:** builds from your **Liked** colors — a calm dominant, a
   middle secondary, and a punchy accent, each with a shadow/base/light family.
   - **Name it + Save** to keep it. Saved palettes stick around under *Saved
@@ -71,6 +76,6 @@ project.
 ## Versioning
 
 Packages ship as `color_swatch_vX.Y.Z.zip`, matching `plugin.cfg`.
-This is **v2.3.2**.
+This is **v2.4.0**.
 
 Godot 4.x · GabagoolStudios

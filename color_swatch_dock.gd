@@ -7,6 +7,7 @@ extends VBoxContainer
 ## sets, and keep named palettes that persist across sessions.
 
 const Store := preload("res://addons/color_swatch/color_store.gd")
+const Extractor := preload("res://addons/color_swatch/image_swatch.gd")
 const SWATCH := Vector2(26, 26)
 const CAT_LABELS := {"liked": "Liked", "disliked": "Disliked", "neutral": "Neutral"}
 
@@ -19,6 +20,7 @@ var _status: Label
 var _palette_box: VBoxContainer
 var _palette_name_edit: LineEdit
 var _saved_box: VBoxContainer
+var _swatch_box: VBoxContainer
 var _lists := {}  # category -> VBoxContainer
 var _last_generated: Dictionary = {}
 
@@ -89,6 +91,26 @@ func _build_ui() -> void:
 	paste_btn.pressed.connect(_on_paste_merge)
 	share_row.add_child(paste_btn)
 	add_child(share_row)
+
+	add_child(HSeparator.new())
+
+	# Examine a screenshot: pull a relative swatch out of an image and drop the
+	# colors into your library. Only one image is held at a time and it's never
+	# stored — it's examined and discarded immediately.
+	var examine_row := HBoxContainer.new()
+	var examine_btn := Button.new()
+	examine_btn.text = "Examine Screenshot…"
+	examine_btn.tooltip_text = "Pick an image; pull its main colors into a swatch. The image isn't kept."
+	examine_btn.pressed.connect(_on_examine)
+	examine_row.add_child(examine_btn)
+	var examine_hint := Label.new()
+	examine_hint.text = "one at a time · not stored"
+	examine_hint.modulate = Color(1, 1, 1, 0.45)
+	examine_row.add_child(examine_hint)
+	add_child(examine_row)
+	_swatch_box = VBoxContainer.new()
+	_swatch_box.add_theme_constant_override("separation", 4)
+	add_child(_swatch_box)
 
 	add_child(HSeparator.new())
 
@@ -255,6 +277,86 @@ func _on_paste_merge() -> void:
 	var added: int = _store.merge_from_text(DisplayServer.clipboard_get())
 	_status.text = "Merged %d new color(s) from clipboard." % added
 	_refresh()
+
+
+# ---------------------------------------------------------------------------
+# Examine a screenshot -> relative swatch (image held one at a time, never saved)
+# ---------------------------------------------------------------------------
+
+func _on_examine() -> void:
+	var dlg := EditorFileDialog.new()
+	dlg.file_mode = EditorFileDialog.FILE_MODE_OPEN_FILE
+	dlg.access = EditorFileDialog.ACCESS_FILESYSTEM
+	dlg.title = "Pick a screenshot to examine"
+	dlg.add_filter("*.png,*.jpg,*.jpeg,*.webp,*.bmp", "Images")
+	dlg.file_selected.connect(_on_examine_chosen.bind(dlg))
+	dlg.canceled.connect(dlg.queue_free)
+	EditorInterface.get_base_control().add_child(dlg)
+	dlg.popup_centered_ratio(0.6)
+
+
+func _on_examine_chosen(path: String, dlg: EditorFileDialog) -> void:
+	dlg.queue_free()  # done with the dialog
+	var img := Image.load_from_file(path)
+	if img == null:
+		_status.text = "Couldn't read that image."
+		return
+	var swatch: Array = Extractor.extract(img, 6)
+	img = null  # discard immediately — the screenshot is never kept
+	_show_swatch(swatch)
+
+
+func _show_swatch(swatch: Array) -> void:
+	for child in _swatch_box.get_children():   # only ever one swatch on screen
+		_swatch_box.remove_child(child)
+		child.queue_free()
+	if swatch.is_empty():
+		var empty := Label.new()
+		empty.text = "    (no colors found)"
+		empty.modulate = Color(1, 1, 1, 0.4)
+		_swatch_box.add_child(empty)
+		return
+
+	var strip := HBoxContainer.new()
+	strip.add_theme_constant_override("separation", 4)
+	for entry in swatch:
+		var col: Color = entry["color"]
+		var pct := int(round(float(entry["weight"]) * 100.0))
+		var sw := ColorRect.new()
+		sw.color = col
+		sw.custom_minimum_size = Vector2(30, 26)
+		sw.tooltip_text = "#%s  ~%d%%" % [Store.color_to_hex(col), pct]
+		strip.add_child(sw)
+	_swatch_box.add_child(strip)
+
+	var actions := HBoxContainer.new()
+	var add_btn := Button.new()
+	add_btn.text = "Add all → Neutral"
+	add_btn.tooltip_text = "Add these colors to Neutral; sort them into Liked/Disliked from there."
+	add_btn.pressed.connect(_on_add_examined.bind(swatch))
+	actions.add_child(add_btn)
+	var copy_btn := Button.new()
+	copy_btn.text = "Copy Hexes"
+	copy_btn.tooltip_text = "Copy the swatch as #HEX ~% lines."
+	copy_btn.pressed.connect(_on_copy_swatch.bind(swatch))
+	actions.add_child(copy_btn)
+	_swatch_box.add_child(actions)
+
+
+func _on_add_examined(swatch: Array) -> void:
+	var added := 0
+	for entry in swatch:
+		var col: Color = entry["color"]
+		var res: Dictionary = _store.add_color(Store.color_to_hex(col), "", "neutral")
+		if res.ok:
+			added += 1
+	_status.text = "Added %d color(s) to Neutral." % added
+	_refresh()
+
+
+func _on_copy_swatch(swatch: Array) -> void:
+	DisplayServer.clipboard_set(Extractor.to_text(swatch))
+	_status.text = "Swatch copied to clipboard."
 
 
 # ---------------------------------------------------------------------------
